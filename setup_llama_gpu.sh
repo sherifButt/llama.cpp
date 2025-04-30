@@ -54,32 +54,35 @@ git clone https://github.com/ggerganov/llama.cpp.git
 cd llama.cpp
 mkdir -p build
 cd build
-cmake .. -DLLAMA_CUBLAS=ON
+# Using GGML_CUDA instead of LLAMA_CUBLAS as recommended
+cmake .. -DGGML_CUDA=ON
 cmake --build . --config Release
 check_status "llama.cpp compilation with CMake"
 
-# Check if server binary exists
-if [ ! -f "$BASE_DIR/llama.cpp/build/bin/llama-server" ]; then
-  echo "ERROR: llama-server binary not found in expected path!"
-  echo "Looking for server binary in build directory..."
+# Check if server binary exists and find it
+echo "Looking for server binary..."
+LLAMA_SERVER_PATH=$(find "$BASE_DIR/llama.cpp/build" -name "server" -type f | head -1)
+if [ -z "$LLAMA_SERVER_PATH" ]; then
+  # Try alternative names
   LLAMA_SERVER_PATH=$(find "$BASE_DIR/llama.cpp/build" -name "llama-server" -type f | head -1)
   if [ -z "$LLAMA_SERVER_PATH" ]; then
-    echo "ERROR: Could not find llama-server binary anywhere!"
+    echo "ERROR: Could not find server binary!"
+    echo "Searching for any executable in build directory..."
+    find "$BASE_DIR/llama.cpp/build" -type f -executable
     exit 1
-  else
-    echo "Found server at: $LLAMA_SERVER_PATH"
-    # Create bin directory and copy server
-    mkdir -p "$BASE_DIR/llama.cpp/build/bin"
-    cp "$LLAMA_SERVER_PATH" "$BASE_DIR/llama.cpp/build/bin/"
   fi
 fi
+
+echo "Found server at: $LLAMA_SERVER_PATH"
+SERVER_DIR=$(dirname "$LLAMA_SERVER_PATH")
+SERVER_NAME=$(basename "$LLAMA_SERVER_PATH")
 
 # Create a start script for llama.cpp server
 echo "Creating start script..."
 cat > "$BASE_DIR/start_llama_server.sh" << EOL
 #!/bin/bash
-cd "$BASE_DIR/llama.cpp/build/bin"
-./llama-server -m "$BASE_DIR/models/Orpheus-3b-FT-Q8_0.gguf" \\
+cd "$SERVER_DIR"
+./$SERVER_NAME -m "$BASE_DIR/models/Orpheus-3b-FT-Q8_0.gguf" \\
   --host 0.0.0.0 \\
   --port 5006 \\
   --ctx-size 8192 \\
