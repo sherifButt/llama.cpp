@@ -1,36 +1,51 @@
 #!/bin/bash
 
-# Super minimal script to just download the model and create a start script
+# Build llama.cpp and set up server with Orpheus model
 
-echo "Setting up minimal start script for Orpheus model..."
+echo "Building llama.cpp and setting up server for Orpheus model..."
 
 BASE_DIR=$(pwd)
 
-# Create models directory and download the model if needed
-mkdir -p models
-if [ ! -f "models/Orpheus-3b-FT-Q8_0.gguf" ]; then
-  echo "Downloading Orpheus model..."
-  curl -L "https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf/resolve/main/Orpheus-3b-FT-Q8_0.gguf" -o "models/Orpheus-3b-FT-Q8_0.gguf"
+# Step 1: Build llama.cpp if not already built
+if [ ! -d "build" ]; then
+    echo "Building llama.cpp with GPU support..."
+    mkdir -p build
+    cd build
+    cmake .. -DGGML_CUDA=ON -DLLAMA_CURL=OFF
+    cmake --build . --config Release
+    cd $BASE_DIR
 else
-  echo "Model already exists, skipping download."
+    echo "Build directory exists, assuming llama.cpp is built."
 fi
 
-# Find the server binary
+# Step 2: Download the model if needed
+mkdir -p models
+if [ ! -f "models/Orpheus-3b-FT-Q8_0.gguf" ]; then
+    echo "Downloading Orpheus model..."
+    curl -L "https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf/resolve/main/Orpheus-3b-FT-Q8_0.gguf" -o "models/Orpheus-3b-FT-Q8_0.gguf"
+else
+    echo "Model already exists, skipping download."
+fi
+
+# Step 3: Find the server binary
 echo "Looking for server binary..."
-SERVER_PATH=$(find $BASE_DIR/llama.cpp -name "server" -type f -executable 2>/dev/null)
+SERVER_PATH=$(find $BASE_DIR/build -name "server" -type f -executable 2>/dev/null)
 if [ -z "$SERVER_PATH" ]; then
-  SERVER_PATH=$(find $BASE_DIR/llama.cpp -name "*server*" -type f -executable 2>/dev/null | head -1)
-  if [ -z "$SERVER_PATH" ]; then
-    echo "ERROR: Cannot find server binary. Make sure llama.cpp is built correctly."
-    exit 1
-  fi
+    echo "Searching for any server-like binary..."
+    SERVER_PATH=$(find $BASE_DIR/build -name "*server*" -type f -executable 2>/dev/null | head -1)
+    if [ -z "$SERVER_PATH" ]; then
+        echo "ERROR: Cannot find server binary."
+        echo "Listing all executables in build directory:"
+        find $BASE_DIR/build -type f -executable
+        exit 1
+    fi
 fi
 
 SERVER_DIR=$(dirname "$SERVER_PATH")
 SERVER_BIN=$(basename "$SERVER_PATH")
 echo "Found server at: $SERVER_DIR/$SERVER_BIN"
 
-# Create a simple start script with correct paths
+# Step 4: Create a start script
 cat > start-server.sh << EOL
 #!/bin/bash
 cd "$SERVER_DIR"
@@ -41,7 +56,8 @@ cd "$SERVER_DIR"
   --n-predict 8192 \\
   --rope-scaling linear \\
   --n-gpu-layers 99 \\
-  --no-mmap
+  --no-mmap \\
+  --verbose
 EOL
 
 chmod +x start-server.sh
@@ -54,5 +70,5 @@ echo "======================================"
 # Option to start immediately
 read -p "Start the server now? (y/n): " choice
 if [[ $choice == "y" || $choice == "Y" ]]; then
-  ./start-server.sh
+    ./start-server.sh
 fi
