@@ -24,7 +24,7 @@ echo "Using base directory: $BASE_DIR"
 
 # Install required packages
 echo "[1/4] Installing required packages..."
-apt-get update && apt-get install -y git cmake build-essential curl
+apt-get update && apt-get install -y git cmake build-essential curl libcurl4-openssl-dev
 check_status "Package installation"
 
 # Create model directory
@@ -45,7 +45,7 @@ fi
 # Install llama.cpp with GPU support
 echo "[4/4] Installing llama.cpp server with CMake..."
 cd "$BASE_DIR"
-if [ -d "llama.cpp" ]; then
+if [ -d "llama.cpp" ] && [ "$BASE_DIR" != "$BASE_DIR/llama.cpp" ]; then
   echo "Removing existing llama.cpp directory..."
   rm -rf llama.cpp
 fi
@@ -54,17 +54,18 @@ git clone https://github.com/ggerganov/llama.cpp.git
 cd llama.cpp
 mkdir -p build
 cd build
-# Using GGML_CUDA instead of LLAMA_CUBLAS as recommended
-cmake .. -DGGML_CUDA=ON
+
+# Using GGML_CUDA and disabling CURL if needed
+cmake .. -DGGML_CUDA=ON -DLLAMA_CURL=OFF
 cmake --build . --config Release
 check_status "llama.cpp compilation with CMake"
 
 # Check if server binary exists and find it
 echo "Looking for server binary..."
-LLAMA_SERVER_PATH=$(find "$BASE_DIR/llama.cpp/build" -name "server" -type f | head -1)
+LLAMA_SERVER_PATH=$(find "$BASE_DIR/llama.cpp/build" -name "server" -type f -executable | head -1)
 if [ -z "$LLAMA_SERVER_PATH" ]; then
   # Try alternative names
-  LLAMA_SERVER_PATH=$(find "$BASE_DIR/llama.cpp/build" -name "llama-server" -type f | head -1)
+  LLAMA_SERVER_PATH=$(find "$BASE_DIR/llama.cpp/build" -name "llama-server" -type f -executable | head -1)
   if [ -z "$LLAMA_SERVER_PATH" ]; then
     echo "ERROR: Could not find server binary!"
     echo "Searching for any executable in build directory..."
